@@ -1,0 +1,23 @@
+# HOWTO build a manifest for data on LUMIO.
+# This is a list of commands used to create the manifest for IA data on LUMIO.
+# This is not a polished script, the commands were executed interactively, making sure the previous step produced neccessary output before running the next step.
+
+
+# 1. Calculate md5 checksums for the buckets of interest, can do this in parallel:
+mkdir md5sums; cd md5sums
+for x in `rclone lsf lumio:|grep -E 'archivebot|wide|survey'`; do 
+    sbatch --partition small --cpus-per-task=32 --mem-per-cpu=1750M --time=72:00:00 -A project_465003445 ../calculate_md5.sh $(basename $x)
+done
+for x in *md5; do sed 's@  @ '$(basename $x .md5)'/@' <$x; done >../all.md5
+cd ..
+
+# 2. Compile the full list of files on LUMIO in the buckets of interest: 
+rclone lsjson -R lumio: >q 
+grep -E '"Path":"(archivebot|wide|survey)' q >ia.lst
+sed -i 's/,$//' ia.lst
+
+# 3. Convert to a manifest. This creates download_manifest.jsonl: 
+bash create_manifest.sh ia.lst
+
+# 4. Merge in checksums:
+python merge_md5.py all.md5 download_manifest.jsonl >download_manifest_ia_md5.jsonl
